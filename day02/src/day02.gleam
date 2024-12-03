@@ -85,12 +85,11 @@ fn remove_by_idx_(
 ) -> List(Int) {
   case lst {
     [] -> acc_lst
-    [head, ..rest] -> {
+    [head, ..rest] ->
       case acc_idx == idx_to_remove {
         True -> remove_by_idx_(rest, idx_to_remove, acc_lst, acc_idx + 1)
         False ->
           remove_by_idx_(rest, idx_to_remove, [head, ..acc_lst], acc_idx + 1)
       }
-    }
   }
 }
