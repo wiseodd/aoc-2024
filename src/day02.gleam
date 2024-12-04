@@ -7,7 +7,7 @@ import gleam/string
 import simplifile
 
 pub fn main() {
-  let assert Ok(content) = simplifile.read("input.txt")
+  let assert Ok(content) = simplifile.read("./data/day02_input.txt")
 
   let reports: List(List(Int)) =
     content

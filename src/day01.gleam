@@ -7,7 +7,7 @@ import gleam/string
 import simplifile
 
 pub fn main() {
-  let assert Ok(content) = simplifile.read("input.txt")
+  let assert Ok(content) = simplifile.read("data/day01_input.txt")
 
   let list1: List(Int) = extract_sorted_list(content, First)
   let list2: List(Int) = extract_sorted_list(content, Second)

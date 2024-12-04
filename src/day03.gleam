@@ -8,7 +8,7 @@ import gleam/string
 import simplifile
 
 pub fn main() {
-  let assert Ok(content) = simplifile.read("input.txt")
+  let assert Ok(content) = simplifile.read("data/day03_input.txt")
 
   // PART 1
   io.print("Sum of mults: ")
