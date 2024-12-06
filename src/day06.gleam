@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/io
 import gleam/list
@@ -5,6 +6,14 @@ import gleam/option.{None, Some}
 import gleam/set
 import gleam/string
 import simplifile
+
+pub type Map {
+  Map(
+    guard_loc_dir: Result(#(Coord, MapItem), Nil),
+    map_size: Coord,
+    map_dict: Dict(Coord, MapItem),
+  )
+}
 
 pub type MapItem {
   Obstruction
@@ -20,8 +29,8 @@ pub type Coord {
 }
 
 pub fn main() {
-  // let assert Ok(content) = simplifile.read("data/day06_input.txt")
-  let assert Ok(content) = simplifile.read("data/day06_input_toy1.txt")
+  let assert Ok(content) = simplifile.read("data/day06_input.txt")
+  // let assert Ok(content) = simplifile.read("data/day06_input_toy1.txt")
 
   let raw_map: List(List(#(Coord, MapItem))) =
     content
@@ -49,63 +58,118 @@ pub fn main() {
   let map_size: Coord =
     Coord(x: first |> list.length, y: raw_map |> list.length)
 
-  let map: Dict(Coord, MapItem) =
+  let map_dict: Dict(Coord, MapItem) =
     raw_map
     |> list.flatten
     |> dict.from_list
 
-  case map |> get_guard_loc_dir {
-    Ok(#(coord, _)) -> {
-      io.print("Num distinct guard position: ")
-      #(coord, map)
-      |> Ok
-      |> get_trace(map_size)
-      |> set.from_list
-      |> set.size
-      |> io.debug
+  let map =
+    Map(
+      guard_loc_dir: raw_map
+        |> list.flatten
+        |> list.find(fn(tup) {
+          let #(_, item) = tup
+          case item {
+            GuardNorth | GuardEast | GuardSouth | GuardWest -> True
+            _ -> False
+          }
+        }),
+      map_size: map_size,
+      map_dict: map_dict,
+    )
 
-      Nil
-    }
-    Error(Nil) -> Nil
-  }
-}
-
-fn get_trace(
-  val_or_err: Result(#(Coord, Dict(Coord, MapItem)), Nil),
-  map_size: Coord,
-) -> List(Coord) {
-  case val_or_err {
-    Error(_) -> []
-    Ok(#(coord, map)) -> {
-      [coord, ..get_trace(simulation_step(map, map_size), map_size)]
-    }
-  }
-}
-
-fn get_guard_loc_dir(
-  map: Dict(Coord, MapItem),
-) -> Result(#(Coord, MapItem), Nil) {
+  // PART 1
+  io.print("Num distinct guard position: ")
   map
-  |> dict.to_list
-  |> list.find(fn(tup) {
-    let #(_, item) = tup
-    case item {
-      GuardNorth | GuardEast | GuardSouth | GuardWest -> True
-      _ -> False
-    }
-  })
+  |> get_trace
+  |> set.from_list
+  |> set.size
+  |> io.debug
+
+  // PART 2
+  io.print("Num of loops: ")
+  map
+  |> count_loop(map, Coord(x: 0, y: 0))
+  |> io.debug
 }
 
-fn simulation_step(
-  map: Dict(Coord, MapItem),
-  map_size: Coord,
-) -> Result(#(Coord, Dict(Coord, MapItem)), Nil) {
-  let guard_loc_dir = map |> get_guard_loc_dir
+fn get_trace(map: Map) -> List(Coord) {
+  case map.guard_loc_dir {
+    Error(_) -> []
+    Ok(#(coord, _)) -> {
+      [coord, ..get_trace(simulation_step(map))]
+    }
+  }
+}
 
-  case guard_loc_dir {
+fn count_loop(map: Map, starting_map: Map, coord: Coord) -> Int {
+  let Coord(x_max, y_max) = map.map_size
+
+  // coord |> io.debug
+
+  case coord {
+    _ if coord.x >= x_max || coord.y >= y_max -> 0
+    _ if coord.x >= x_max - 1 ->
+      {
+        map
+        |> place_obstruction(coord)
+        |> is_loop(starting_map, 0)
+        |> bool.to_int
+      }
+      + count_loop(map, starting_map, Coord(x: 0, y: coord.y + 1))
+    _ ->
+      {
+        map
+        |> place_obstruction(coord)
+        |> is_loop(starting_map, 0)
+        |> bool.to_int
+      }
+      + count_loop(map, starting_map, Coord(x: coord.x + 1, y: coord.y))
+  }
+}
+
+fn place_obstruction(map: Map, coord: Coord) -> Map {
+  let updated_map_dict =
+    map.map_dict
+    |> dict.upsert(coord, fn(maybe_item) {
+      let assert Some(item) = maybe_item
+      case item {
+        Space -> Obstruction
+        _ -> item
+      }
+    })
+
+  Map(..map, map_dict: updated_map_dict)
+}
+
+fn is_loop(current: Map, starting: Map, i: Int) -> Bool {
+  let assert Ok(#(Coord(x_start, y_start), dir_start)) = starting.guard_loc_dir
+
+  case current.guard_loc_dir {
+    // Termination heuristic!
+    _ if i > 10_000 -> True
+    // Termination case; i.e. when guard leave the area
+    Error(Nil) -> False
+    Ok(#(Coord(x_curr, y_curr), dir_curr)) -> {
+      let back_at_square_one =
+        i != 0
+        && x_curr == x_start
+        && y_curr == y_start
+        && dir_curr == dir_start
+
+      case back_at_square_one {
+        True -> True
+        False -> current |> simulation_step |> is_loop(starting, i + 1)
+      }
+    }
+  }
+}
+
+fn simulation_step(map: Map) -> Map {
+  case map.guard_loc_dir {
     Ok(#(coord, dir)) -> {
       let updated_map =
-        map
+        map.map_dict
         |> dict.upsert(update: coord, with: fn(maybe_item) {
           case maybe_item {
             Some(_) -> Space
@@ -143,24 +207,19 @@ fn simulation_step(
       }
 
       case
-        { new_coord.x < map_size.x && new_coord.x >= 0 }
-        && { new_coord.y < map_size.y && new_coord.y >= 0 }
+        { new_coord.x < map.map_size.x && new_coord.x >= 0 }
+        && { new_coord.y < map.map_size.y && new_coord.y >= 0 }
       {
         True ->
-          #(
-            new_coord,
-            updated_map
-              |> dict.upsert(update: new_coord, with: fn(maybe_item) {
-                case maybe_item {
-                  Some(_) -> new_dir
-                  None -> new_dir
-                }
-              }),
+          Map(
+            ..map,
+            guard_loc_dir: #(new_coord, new_dir) |> Ok,
+            map_dict: updated_map
+              |> dict.upsert(update: new_coord, with: fn(_) { new_dir }),
           )
-          |> Ok
-        False -> Error(Nil)
+        False -> Map(..map, guard_loc_dir: Error(Nil))
       }
     }
-    Error(_) -> Error(Nil)
+    Error(_) -> Map(..map, guard_loc_dir: Error(Nil))
   }
 }
