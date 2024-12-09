@@ -29,8 +29,13 @@ pub fn main() {
 
   let files = blocks |> blocks2files(0, 0)
 
-  [1, 2, 3, 4, 5] |> replace(1, 100) |> insert_at(1, 9) |> io.debug
-  arrange_whole(files, 0, { files |> list.length } - 1) |> io.debug
+  let blocks_files =
+    arrange_whole(files, 0, { files |> list.length } - 1) |> files2blocks
+  let len_files = blocks_files |> list.length
+  let blocks_bwd_files = blocks_files |> list.reverse
+
+  calculate_checksum(blocks_files, blocks_bwd_files, 0, 0, len_files)
+  |> io.debug
 }
 
 fn map2blocks(disk_map: List(Int), block_id: Int, is_block: Bool) -> List(Int) {
@@ -116,7 +121,11 @@ fn arrange_whole(files: List(File), idx_fwd: Int, idx_bwd: Int) -> List(File) {
       case maybe_first {
         Error(_) -> arrange_whole(files, 0, idx_bwd - 1)
         Ok(first) if first.id == empty && first.size == last.size ->
-          arrange_whole(files |> replace(idx_fwd, last), 0, idx_bwd - 1)
+          arrange_whole(
+            files |> replace(idx_fwd, last) |> replace(idx_bwd, first),
+            0,
+            idx_bwd - 1,
+          )
         Ok(first) if first.id == empty && last.size < first.size ->
           arrange_whole(
             files
@@ -129,14 +138,7 @@ fn arrange_whole(files: List(File), idx_fwd: Int, idx_bwd: Int) -> List(File) {
             0,
             idx_bwd - 1,
           )
-        Ok(first) if first.id == empty && last.size > first.size ->
-          arrange_whole(files, idx_fwd + 1, idx_bwd)
-        Ok(first) if first.id != empty ->
-          arrange_whole(files, idx_fwd + 1, idx_bwd)
-        _ -> {
-          [maybe_last, maybe_first] |> io.debug
-          panic
-        }
+        _ -> arrange_whole(files, idx_fwd + 1, idx_bwd)
       }
     }
     _ -> panic
