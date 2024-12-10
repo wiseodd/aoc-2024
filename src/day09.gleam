@@ -10,7 +10,13 @@ const empty = -9999
 pub fn main() {
   // let assert Ok(content) = simplifile.read("data/day09_input.txt")
   let assert Ok(content) = simplifile.read("data/day09_input_toy.txt")
+  // part1(content)
+  part2(content)
+}
 
+// ------------------------------------ PART 1 -----------------------------------------
+
+fn part1(content: String) {
   let blocks: List(Int) =
     content
     |> string.trim
@@ -23,19 +29,8 @@ pub fn main() {
 
   let len: Int = blocks |> list.length
   let blocks_bwd: List(Int) = blocks |> list.reverse
-
   // calculate_checksum(blocks, blocks_bwd, 0, 0, len)
   // |> io.debug
-
-  let files = blocks |> blocks2files(0, 0)
-
-  let blocks_files =
-    arrange_whole(files, 0, { files |> list.length } - 1) |> files2blocks
-  let len_files = blocks_files |> list.length
-  let blocks_bwd_files = blocks_files |> list.reverse
-
-  calculate_checksum(blocks_files, blocks_bwd_files, 0, 0, len_files)
-  |> io.debug
 }
 
 fn map2blocks(disk_map: List(Int), block_id: Int, is_block: Bool) -> List(Int) {
@@ -79,82 +74,143 @@ fn calculate_checksum(
   }
 }
 
-pub type File {
-  File(id: Int, size: Int)
+// ------------------------------------ PART 2 -----------------------------------------
+
+pub type FileSpace {
+  FileSpace(id: Int, size: Int, space_after: Int)
 }
 
-fn blocks2files(blocks: List(Int), prev: Int, size: Int) -> List(File) {
-  case blocks {
-    [] -> []
-    [last] -> [File(id: last, size: size + 1)]
-    [first, ..rest] -> {
-      case first {
-        _ if first != prev -> [
-          File(id: prev, size: size),
-          ..blocks2files(rest, first, 1)
-        ]
-        _ -> blocks2files(rest, prev, size + 1)
+fn part2(content: String) {
+  let files: List(FileSpace) =
+    content
+    |> string.trim
+    |> string.to_graphemes
+    |> list.map(fn(s) {
+      let assert Ok(val) = s |> int.parse
+      val
+    })
+    // list of pairs of `(file_size, space_after)`
+    |> list.sized_chunk(2)
+    |> list.index_map(fn(sizes: List(Int), file_id: Int) -> FileSpace {
+      case sizes {
+        [file_size, space_after] -> FileSpace(file_id, file_size, space_after)
+        [file_size] -> FileSpace(file_id, file_size, 0)
+        _ -> panic
       }
-    }
-  }
+    })
+
+  files
+  |> list.reverse
+  |> arrange_whole
+  |> list.reverse
+  // |> calculate_checksum_whole(0)
+  |> io.debug
+
+  io.println("")
+
+  files
+  |> list.reverse
+  |> arrange_whole2
+  |> list.reverse
+  // |> calculate_checksum_whole(0)
+  |> io.debug
 }
 
-fn files2blocks(files: List(File)) -> List(Int) {
+fn calculate_checksum_whole(files: List(FileSpace), idx: Int) -> Int {
   case files {
-    [] -> []
+    [] -> 0
     [first, ..rest] ->
-      [first.id |> list.repeat(first.size), files2blocks(rest)] |> list.flatten
+      {
+        // #(first.id, first.size, idx) |> io.debug
+        first.id
+        |> list.repeat(first.size)
+        |> list.index_fold(0, fn(acc, val, i) { acc + val * { idx + i } })
+      }
+      + calculate_checksum_whole(rest, idx + first.size + first.space_after)
   }
 }
 
-fn arrange_whole(files: List(File), idx_fwd: Int, idx_bwd: Int) -> List(File) {
-  let maybe_last = files |> list.drop(idx_bwd) |> list.first
+fn arrange_whole(reversed_files: List(FileSpace)) -> List(FileSpace) {
+  case reversed_files {
+    [] -> []
+    [file, ..rest] -> {
+      let files = rest |> list.reverse
+      let #(before, after) =
+        files
+        |> list.split_while(fn(fs) {
+          // Negated since want to take the first that >=
+          fs.space_after < file.size
+        })
 
-  case maybe_last {
-    _ if idx_bwd < 0 -> files
-    Error(_) -> files
-    _ if idx_fwd >= idx_bwd -> arrange_whole(files, 0, idx_bwd - 1)
-    Ok(last) if last.id == empty -> arrange_whole(files, 0, idx_bwd - 1)
-    Ok(last) if last.id != empty -> {
-      let maybe_first = files |> list.drop(idx_fwd) |> list.first
+      case after {
+        [] -> [[file], before |> list.reverse |> arrange_whole] |> list.flatten
+        [first_after, ..rest_after] -> {
+          let res =
+            [
+              before,
+              [FileSpace(first_after.id, first_after.size, 0)],
+              [
+                FileSpace(
+                  file.id,
+                  file.size,
+                  first_after.space_after - file.size,
+                ),
+              ],
+              rest_after,
+            ]
+            |> list.flatten
+            |> list.reverse
 
-      case maybe_first {
-        Error(_) -> arrange_whole(files, 0, idx_bwd - 1)
-        Ok(first) if first.id == empty && first.size == last.size ->
-          arrange_whole(
-            files |> replace(idx_fwd, last) |> replace(idx_bwd, first),
-            0,
-            idx_bwd - 1,
-          )
-        Ok(first) if first.id == empty && last.size < first.size ->
-          arrange_whole(
-            files
-              |> replace(idx_fwd, last)
-              |> replace(idx_bwd, File(id: empty, size: last.size))
-              |> insert_at(
-                idx_fwd + 1,
-                File(id: empty, size: first.size - last.size),
-              ),
-            0,
-            idx_bwd - 1,
-          )
-        _ -> arrange_whole(files, idx_fwd + 1, idx_bwd)
+          [
+            [FileSpace(file.id, 0, file.size + file.space_after)],
+            res |> arrange_whole,
+          ]
+          |> list.flatten
+        }
       }
     }
-    _ -> panic
   }
 }
 
-fn replace(lst: List(a), idx: Int, val: a) -> List(a) {
-  lst
-  |> list.index_map(fn(v, i) {
-    case i == idx {
-      True -> val
-      False -> v
-    }
-  })
-}
+fn arrange_whole2(reversed_files: List(FileSpace)) -> List(FileSpace) {
+  case reversed_files {
+    [] -> []
+    [file, ..rest] -> {
+      let files = rest |> list.reverse
+      let #(before, after) =
+        files
+        |> list.split_while(fn(fs) {
+          // Negated since want to take the first that >=
+          fs.space_after < file.size
+        })
 
-fn insert_at(lst: List(a), idx: Int, val: a) -> List(a) {
-  [lst |> list.take(idx), [val], lst |> list.drop(idx)] |> list.flatten
+      case after {
+        [] -> [[file], before |> list.reverse |> arrange_whole2] |> list.flatten
+        [first_after, ..rest_after] -> {
+          [
+            before,
+            [FileSpace(first_after.id, first_after.size, 0)],
+            [FileSpace(file.id, file.size, first_after.space_after - file.size)],
+            case rest_after |> list.reverse {
+              [] -> []
+              [last_rest_after, ..first_rest_after] -> {
+                [
+                  FileSpace(
+                    last_rest_after.id,
+                    last_rest_after.size,
+                    last_rest_after.space_after + file.size + file.space_after,
+                  ),
+                  ..first_rest_after
+                ]
+                |> list.reverse
+              }
+            },
+          ]
+          |> list.flatten
+          |> list.reverse
+          |> arrange_whole2
+        }
+      }
+    }
+  }
 }
