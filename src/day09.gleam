@@ -1,4 +1,3 @@
-import gleam/dict.{type Dict}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -8,9 +7,8 @@ import simplifile
 const empty = -9999
 
 pub fn main() {
-  // let assert Ok(content) = simplifile.read("data/day09_input.txt")
-  let assert Ok(content) = simplifile.read("data/day09_input_toy.txt")
-  // part1(content)
+  let assert Ok(content) = simplifile.read("data/day09_input.txt")
+  part1(content)
   part2(content)
 }
 
@@ -29,8 +27,8 @@ fn part1(content: String) {
 
   let len: Int = blocks |> list.length
   let blocks_bwd: List(Int) = blocks |> list.reverse
-  // calculate_checksum(blocks, blocks_bwd, 0, 0, len)
-  // |> io.debug
+  calculate_checksum(blocks, blocks_bwd, 0, 0, len)
+  |> io.debug
 }
 
 fn map2blocks(disk_map: List(Int), block_id: Int, is_block: Bool) -> List(Int) {
