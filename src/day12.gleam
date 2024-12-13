@@ -4,7 +4,6 @@ import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/pair
-import gleam/result
 import gleam/set.{type Set}
 import gleam/string
 import simplifile
