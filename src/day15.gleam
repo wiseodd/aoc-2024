@@ -19,24 +19,36 @@ pub type Dir {
 pub type Object {
   Robot
   Box
+  BoxL
+  BoxR
   Wall
   Space
 }
 
 pub fn main() {
   let assert Ok(content) = simplifile.read("data/day15_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day15_input_toy.txt")
-  // let assert Ok(content) = simplifile.read("data/day15_input_toy2.txt")
 
   let assert [map_str, moves_str] =
     content |> string.trim |> string.split("\n\n")
 
-  let nrows = map_str |> string.trim |> string.split("\n") |> list.length
-  let assert Ok(line) =
-    map_str |> string.trim |> string.split("\n") |> list.first
-  let ncols = line |> string.to_graphemes |> list.length
-  let max: Coord = Coord(ncols, nrows)
+  io.print("Part 1: ")
+  map_str
+  |> simulate(moves_str)
+  |> total_gps
+  |> io.debug
 
+  io.print("Part 2: ")
+  map_str
+  |> string.replace("#", "##")
+  |> string.replace(".", "..")
+  |> string.replace("O", "[]")
+  |> string.replace("@", "@.")
+  |> simulate(moves_str)
+  |> total_gps
+  |> io.debug
+}
+
+fn simulate(map_str: String, moves_str: String) -> Dict(Coord, Object) {
   let warehouse: Dict(Coord, Object) =
     map_str
     |> string.trim
@@ -49,6 +61,8 @@ pub fn main() {
         let obj = case c {
           "#" -> Wall
           "O" -> Box
+          "[" -> BoxL
+          "]" -> BoxR
           "@" -> Robot
           _ -> Space
         }
@@ -82,32 +96,13 @@ pub fn main() {
       }
     })
 
-  let warehouse =
-    moves
-    // |> list.take(7)
-    |> list.map_fold(#(warehouse, robot_loc), fn(memo, dir) {
-      let memo = move(dir, memo.0, memo.1)
-
-      // io.debug(dir)
-      // memo.0 |> draw(max)
-
-      #(memo, dir)
-    })
-    |> pair.first
-    |> pair.first
-
-  io.print("Part 1: ")
-  warehouse
-  |> dict.to_list
-  |> list.fold(0, fn(acc, tup) {
-    let #(loc, obj) = tup
-    let gps = case obj {
-      Box -> loc |> gps
-      _ -> 0
-    }
-    acc + gps
+  moves
+  |> list.map_fold(#(warehouse, robot_loc), fn(memo, dir) {
+    let memo = move(dir, memo.0, memo.1)
+    #(memo, dir)
   })
-  |> io.debug
+  |> pair.first
+  |> pair.first
 }
 
 fn move(
@@ -126,9 +121,61 @@ fn move(
   case obj_next {
     Wall -> #(wh, loc)
     Space -> #(wh |> update(loc, Space) |> update(loc_next, obj), loc_next)
-    Box -> {
-      // Move the next object
+    _ if dir == E || dir == W -> {
       let #(wh_next, _) = move(dir, wh, loc_next)
+      case wh_next |> dict.get(loc_next) {
+        // Move if new space opened up
+        Ok(Space) -> move(dir, wh_next, loc)
+        // Otherwise don't move, return the state as is
+        _ -> #(wh_next, loc)
+      }
+    }
+    Box -> {
+      let #(wh_next, _) = move(dir, wh, loc_next)
+      case wh_next |> dict.get(loc_next) {
+        // Move if new space opened up
+        Ok(Space) -> move(dir, wh_next, loc)
+        // Otherwise don't move, return the state as is
+        _ -> #(wh_next, loc)
+      }
+    }
+    BoxL -> {
+      // Hypothetically move both [ and ]
+      let loc_pair = loc_next |> get_next_loc(E)
+      let #(_, loc_nn_l) = move(dir, wh, loc_next)
+      let #(_, loc_nn_r) = move(dir, wh, loc_next |> get_next_loc(E))
+
+      // Can *both* of them move? If so, move both of them.
+      let wh_next = case loc_nn_l != loc_next && loc_nn_r != loc_pair {
+        True -> {
+          let #(wh_next, _) = move(dir, wh, loc_next)
+          let #(wh_next, _) = move(dir, wh_next, loc_pair)
+          wh_next
+        }
+        False -> wh
+      }
+
+      case wh_next |> dict.get(loc_next) {
+        Ok(Space) -> move(dir, wh_next, loc)
+        _ -> #(wh_next, loc)
+      }
+    }
+    BoxR -> {
+      // Hypothetically move both [ and ]
+      let loc_pair = loc_next |> get_next_loc(W)
+      let #(_, loc_nn_l) = move(dir, wh, loc_next)
+      let #(_, loc_nn_r) = move(dir, wh, loc_next |> get_next_loc(W))
+
+      // Can *both* of them move? If so, move both of them.
+      let wh_next = case loc_nn_l != loc_next && loc_nn_r != loc_pair {
+        True -> {
+          let #(wh_next, _) = move(dir, wh, loc_next)
+          let #(wh_next, _) = move(dir, wh_next, loc_pair)
+          wh_next
+        }
+        False -> wh
+      }
+
       case wh_next |> dict.get(loc_next) {
         Ok(Space) -> move(dir, wh_next, loc)
         _ -> #(wh_next, loc)
@@ -138,8 +185,17 @@ fn move(
   }
 }
 
-fn gps(loc: Coord) -> Int {
-  loc.x + 100 * loc.y
+fn total_gps(wh: Dict(Coord, Object)) -> Int {
+  wh
+  |> dict.to_list
+  |> list.fold(0, fn(acc, tup) {
+    let #(loc, obj) = tup
+    let gps = case obj {
+      Box | BoxL -> loc.x + 100 * loc.y
+      _ -> 0
+    }
+    acc + gps
+  })
 }
 
 fn get_next_loc(loc: Coord, dir: Dir) -> Coord {
@@ -159,25 +215,4 @@ fn update(
 ) -> Dict(Coord, Object) {
   wh
   |> dict.upsert(loc, fn(_) { obj })
-}
-
-fn draw(wh: Dict(Coord, Object), max: Coord) {
-  io.println("")
-
-  list.range(0, max.y - 1)
-  |> list.each(fn(y) {
-    list.range(0, max.x - 1)
-    |> list.each(fn(x) {
-      let assert Ok(obj) = wh |> dict.get(Coord(x, y))
-      case obj {
-        Space -> "."
-        Wall -> "#"
-        Box -> "O"
-        Robot -> "@"
-      }
-      |> io.print
-    })
-    io.println("")
-  })
-  io.println("")
 }
