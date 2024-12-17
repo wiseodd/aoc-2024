@@ -4,9 +4,12 @@ import gleam/erlang
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/order.{type Order}
 import gleam/pair
 import gleam/result
 import gleam/string
+import gleamy/pairing_heap.{type Heap}
+import gleamy/priority_queue as pq
 import simplifile
 
 const large_num = 10_000_000_000
@@ -26,9 +29,13 @@ pub type Reindeer {
   Reindeer(loc: Coord, dir: Dir)
 }
 
+pub type Vertex {
+  Vertex(loc: Coord, dir: Dir)
+}
+
 pub fn main() {
-  let assert Ok(content) = simplifile.read("data/day16_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day16_input_toy.txt")
+  // let assert Ok(content) = simplifile.read("data/day16_input.txt")
+  let assert Ok(content) = simplifile.read("data/day16_input_toy.txt")
   // let assert Ok(content) = simplifile.read("data/day16_input_toy2.txt")
 
   let maze: Dict(Coord, String) =
@@ -44,17 +51,98 @@ pub fn main() {
     |> list.flatten
     |> dict.from_list
 
-  let reindeer = Reindeer(loc: maze |> find("S"), dir: E)
+  let start = Vertex(loc: maze |> find("S"), dir: E)
   let goal = maze |> find("E")
 
   io.print("Part 1: ")
   maze
-  |> explore(reindeer, goal, 0, [])
-  |> pair.first
+  |> dijkstra(start, goal)
   |> io.debug
 }
 
-fn explore(
+fn dijkstra(maze: Dict(Coord, String), start: Vertex, goal: Coord) -> Int {
+  let graph: List(Vertex) =
+    maze
+    |> dict.to_list
+    |> list.map(fn(tup) {
+      let #(loc, _) = tup
+      [E, S, W, N] |> list.map(fn(dir) { Vertex(loc, dir) })
+    })
+    |> list.flatten
+
+  let q: Heap(#(Vertex, Int)) =
+    pq.from_list([#(start, 0)], fn(v1: #(Vertex, Int), v2: #(Vertex, Int)) {
+      int.compare(v1.1, v2.1)
+    })
+
+  let dist: Dict(Vertex, Int) =
+    graph
+    |> list.map(fn(v) {
+      let d = case v == start {
+        True -> 0
+        False -> large_num
+      }
+      #(v, d)
+    })
+    |> dict.from_list
+
+  let #(_, dist) = do_dijkstra(maze, start, goal, q, dist)
+
+  dist
+  |> dict.to_list
+  |> list.filter_map(fn(tup) {
+    let #(v, d) = tup
+    case v.loc == goal {
+      True -> Ok(d)
+      False -> Error(Nil)
+    }
+  })
+  |> list.fold(large_num, int.min)
+}
+
+fn do_dijkstra(
+  maze: Dict(Coord, String),
+  start: Vertex,
+  goal: Coord,
+  q: Heap(#(Vertex, Int)),
+  dist: Dict(Vertex, Int),
+) -> #(Heap(#(Vertex, Int)), Dict(Vertex, Int)) {
+  case q |> pq.is_empty {
+    True -> #(q, dist)
+    False -> {
+      let assert Ok(#(#(u, _), q)) = q |> pq.pop
+      let Vertex(loc, dir) = u
+      let assert Ok(u_cost) = dist |> dict.get(u)
+
+      let #(q, dist) =
+        [#(dir, 1), #(dir |> rotate_cw, 1000), #(dir |> rotate_ccw, 1000)]
+        |> list.map_fold(#(q, dist), fn(memo, tup) {
+          let #(new_dir, cost) = tup
+          let new_cost = u_cost + cost
+          let v = case new_dir == dir {
+            True -> Vertex(loc |> move(dir), dir)
+            False -> Vertex(loc, new_dir)
+          }
+          let assert Ok(v_cost) = dist |> dict.get(v)
+
+          let #(new_q, new_dist) = case new_cost < v_cost {
+            True -> #(
+              memo.0 |> pq.push(#(v, new_cost)),
+              memo.1 |> dict.upsert(v, fn(_) { new_cost }),
+            )
+            False -> memo
+          }
+
+          #(#(new_q, new_dist), -1)
+        })
+        |> pair.first
+
+      do_dijkstra(maze, start, goal, q, dist)
+    }
+  }
+}
+
+fn dfs(
   maze: Dict(Coord, String),
   reindeer: Reindeer,
   goal: Coord,
@@ -87,7 +175,7 @@ fn explore(
           let next_loc = loc |> move(next_dir)
           let new_cost = cost + total_cost
           let #(new_cost, _) =
-            explore(maze, Reindeer(next_loc, next_dir), goal, new_cost, memo)
+            dfs(maze, Reindeer(next_loc, next_dir), goal, new_cost, memo)
           #([next_loc, ..memo], new_cost)
         })
 
