@@ -4,7 +4,6 @@ import gleam/erlang
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/order.{type Order}
 import gleam/pair
 import gleam/result
 import gleam/string
@@ -64,9 +63,12 @@ fn dijkstra(maze: Dict(Coord, String), start: Vertex, goal: Coord) -> Int {
   let graph: List(Vertex) =
     maze
     |> dict.to_list
-    |> list.map(fn(tup) {
-      let #(loc, _) = tup
-      [E, S, W, N] |> list.map(fn(dir) { Vertex(loc, dir) })
+    |> list.filter_map(fn(tup) {
+      let #(loc, obj) = tup
+      case obj != "#" {
+        True -> Ok([E, S, W, N] |> list.map(fn(dir) { Vertex(loc, dir) }))
+        False -> Error(Nil)
+      }
     })
     |> list.flatten
 
@@ -123,14 +125,17 @@ fn do_dijkstra(
             True -> Vertex(loc |> move(dir), dir)
             False -> Vertex(loc, new_dir)
           }
-          let assert Ok(v_cost) = dist |> dict.get(v)
 
-          let #(new_q, new_dist) = case new_cost < v_cost {
-            True -> #(
-              memo.0 |> pq.push(#(v, new_cost)),
-              memo.1 |> dict.upsert(v, fn(_) { new_cost }),
-            )
-            False -> memo
+          let #(new_q, new_dist) = case dist |> dict.get(v) {
+            Ok(v_cost) ->
+              case new_cost < v_cost {
+                True -> #(
+                  memo.0 |> pq.push(#(v, new_cost)),
+                  memo.1 |> dict.upsert(v, fn(_) { new_cost }),
+                )
+                False -> memo
+              }
+            Error(Nil) -> memo
           }
 
           #(#(new_q, new_dist), -1)
@@ -139,61 +144,6 @@ fn do_dijkstra(
 
       do_dijkstra(maze, start, goal, q, dist)
     }
-  }
-}
-
-fn dfs(
-  maze: Dict(Coord, String),
-  reindeer: Reindeer,
-  goal: Coord,
-  total_cost: Int,
-  visited: List(Coord),
-) -> #(Int, List(Coord)) {
-  let loc = reindeer.loc
-  let dir = reindeer.dir
-
-  use <- bool.guard(visited |> list.contains(loc), #(large_num, visited))
-
-  let visited = [loc, ..visited]
-
-  case maze |> dict.get(loc) {
-    // If wall or out of bound
-    Error(_) | Ok("#") -> #(large_num, visited)
-    // If goal
-    Ok("E") -> #(total_cost, visited)
-    // If space, move by minimizing cost of curr action + recursive cost of next loc
-    Ok("S") | Ok(".") -> {
-      // io.println("Total cost: " <> total_cost |> int.to_string)
-      // pretty_print(maze, reindeer)
-      // let _ = erlang.get_line("")
-
-      // 1001 for rotate_cw and ccw since it's actually turning + move forward at once
-      let #(_, new_costs) =
-        [#(dir, 1), #(dir |> rotate_cw, 1001), #(dir |> rotate_ccw, 1001)]
-        |> list.map_fold(visited, fn(memo, tup) {
-          let #(next_dir, cost) = tup
-          let next_loc = loc |> move(next_dir)
-          let new_cost = cost + total_cost
-          let #(new_cost, _) =
-            dfs(maze, Reindeer(next_loc, next_dir), goal, new_cost, memo)
-          #([next_loc, ..memo], new_cost)
-        })
-
-      // cost |> io.debug
-
-      let assert Ok(min_cost) =
-        new_costs |> list.sort(int.compare) |> list.first
-      #(min_cost, visited)
-    }
-    // Unreachable
-    _ -> panic
-  }
-}
-
-fn is_visited(memo: Dict(Coord, Int), loc: Coord) -> #(Bool, Int) {
-  case memo |> dict.get(loc) {
-    Ok(v) -> #(True, v)
-    _ -> #(False, -1)
   }
 }
 
@@ -230,11 +180,6 @@ fn rotate_ccw(dir: Dir) -> Dir {
     W -> S
     S -> E
   }
-}
-
-fn update(d: Dict(Coord, a), loc: Coord, obj: a) -> Dict(Coord, a) {
-  d
-  |> dict.upsert(loc, fn(_) { obj })
 }
 
 fn pretty_print(maze: Dict(Coord, String), reindeer: Reindeer) {
