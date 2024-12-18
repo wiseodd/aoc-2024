@@ -4,6 +4,7 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/pair
+import gleam/result
 import gleam/string
 import gleamy/pairing_heap.{type Heap}
 import gleamy/priority_queue as pq
@@ -24,15 +25,13 @@ pub type Coord {
 
 pub fn main() {
   let assert Ok(content) = simplifile.read("data/day18_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day18_input_toy.txt")
 
+  let block_list = content |> string.trim |> string.split("\n")
   let start = Coord(0, 0)
-  // let goal = Coord(6, 6)
-  // let n_bytes = 12
   let goal = Coord(70, 70)
   let n_bytes = 1024
 
-  let maze: Dict(Coord, String) =
+  let grid: Dict(Coord, String) =
     list.range(start.y, goal.y)
     |> list.map(fn(y) {
       list.range(start.x, goal.x)
@@ -41,29 +40,40 @@ pub fn main() {
     |> list.flatten
     |> dict.from_list
 
-  let maze: Dict(Coord, String) =
-    content
-    |> string.trim
-    |> string.split("\n")
-    |> list.map(fn(line) {
-      let assert [x, y] = line |> string.trim |> string.split(",")
-      let assert Ok(x) = x |> int.parse
-      let assert Ok(y) = y |> int.parse
-      Coord(x, y)
-    })
-    |> list.take(n_bytes)
-    |> list.map_fold(maze, fn(memo, xy) {
-      #(memo |> dict.upsert(xy, fn(_) { "#" }), Nil)
-    })
-    |> pair.first
-
-  let best_cost = a_star(maze, start, goal)
-
   io.print("Part 1: ")
-  best_cost |> io.debug
-  //
-  // io.print("Part 2: ")
-  // n_best_nodes |> io.debug
+  block_list |> build_maze(n_bytes, grid) |> a_star(start, goal) |> io.debug
+
+  io.print("Part 2: ")
+  block_list
+  |> list.index_map(fn(b, i) { #(i, b) })
+  |> list.find(fn(idx_block) {
+    let n = idx_block.0 + 1
+    use <- bool.guard(n < n_bytes, False)
+    let best_cost = block_list |> build_maze(n, grid) |> a_star(start, goal)
+    best_cost == large_num
+  })
+  |> result.unwrap(#(-1, "Not found"))
+  |> pair.second
+  |> io.println
+}
+
+fn build_maze(
+  block_list: List(String),
+  n_bytes: Int,
+  grid: Dict(Coord, String),
+) -> Dict(Coord, String) {
+  block_list
+  |> list.map(fn(line) {
+    let assert [x, y] = line |> string.trim |> string.split(",")
+    let assert Ok(x) = x |> int.parse
+    let assert Ok(y) = y |> int.parse
+    Coord(x, y)
+  })
+  |> list.take(n_bytes)
+  |> list.map_fold(grid, fn(memo, xy) {
+    #(memo |> dict.upsert(xy, fn(_) { "#" }), Nil)
+  })
+  |> pair.first
 }
 
 fn a_star(maze: Dict(Coord, String), start: Coord, goal: Coord) -> Int {
