@@ -23,14 +23,14 @@ pub type Coord {
 }
 
 pub fn main() {
-  // let assert Ok(content) = simplifile.read("data/day18_input.txt")
-  let assert Ok(content) = simplifile.read("data/day18_input_toy.txt")
+  let assert Ok(content) = simplifile.read("data/day18_input.txt")
+  // let assert Ok(content) = simplifile.read("data/day18_input_toy.txt")
 
   let start = Coord(0, 0)
-  let goal = Coord(6, 6)
-  let n_bytes = 12
-  // let goal = Coord(71, 71)
-  // let n_bytes = 1024
+  // let goal = Coord(6, 6)
+  // let n_bytes = 12
+  let goal = Coord(70, 70)
+  let n_bytes = 1024
 
   let maze: Dict(Coord, String) =
     list.range(start.y, goal.y)
@@ -51,6 +51,11 @@ pub fn main() {
       let assert Ok(y) = y |> int.parse
       Coord(x, y)
     })
+    |> list.take(n_bytes)
+    |> list.map_fold(maze, fn(memo, xy) {
+      #(memo |> dict.upsert(xy, fn(_) { "#" }), Nil)
+    })
+    |> pair.first
 
   let best_cost = a_star(maze, start, goal)
 
@@ -63,21 +68,20 @@ pub fn main() {
 
 fn a_star(maze: Dict(Coord, String), start: Coord, goal: Coord) -> Int {
   let frontier: Heap(#(Coord, Int)) =
-    pq.from_list([#(start, 0)], fn(v1: #(Coord, Int), v2: #(Coord, Int)) {
-      int.compare(v1.1, v2.1)
-    })
+    pq.from_list(
+      [#(start, heuristic(start, goal))],
+      fn(v1: #(Coord, Int), v2: #(Coord, Int)) { int.compare(v1.1, v2.1) },
+    )
 
   let costs: Dict(Coord, Int) =
     maze
     |> dict.filter(fn(_, v) { v != "#" })
     |> dict.map_values(fn(k, _) {
-      case k == start {
-        True -> 0
-        False -> large_num
-      }
+      use <- bool.guard(k == start, 0)
+      large_num
     })
 
-  let #(_, costs) = do_dijkstra(maze, start, goal, frontier, costs)
+  let #(_, costs) = do_a_star(maze, start, goal, frontier, costs)
 
   let best_cost =
     costs
@@ -94,7 +98,7 @@ fn a_star(maze: Dict(Coord, String), start: Coord, goal: Coord) -> Int {
   best_cost
 }
 
-fn do_dijkstra(
+fn do_a_star(
   maze: Dict(Coord, String),
   start: Coord,
   goal: Coord,
@@ -117,7 +121,8 @@ fn do_dijkstra(
         Ok(cost) -> {
           use <- bool.guard(new_cost >= cost, memo)
           #(
-            memo.0 |> pq.push(#(next_node, new_cost)),
+            memo.0
+              |> pq.push(#(next_node, new_cost + heuristic(next_node, goal))),
             memo.1 |> dict.upsert(next_node, fn(_) { new_cost }),
           )
         }
@@ -128,7 +133,11 @@ fn do_dijkstra(
     })
     |> pair.first
 
-  do_dijkstra(maze, start, goal, frontier, costs)
+  do_a_star(maze, start, goal, frontier, costs)
+}
+
+fn heuristic(loc: Coord, goal: Coord) -> Int {
+  int.absolute_value(goal.x - loc.x) + int.absolute_value(goal.y - loc.y)
 }
 
 fn move(loc: Coord, dir: Dir) -> Coord {
