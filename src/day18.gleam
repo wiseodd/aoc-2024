@@ -45,15 +45,7 @@ pub fn main() {
 
   io.print("Part 2: ")
   block_list
-  |> list.index_map(fn(b, i) { #(i, b) })
-  |> list.find(fn(idx_block) {
-    let n = idx_block.0 + 1
-    use <- bool.guard(n < n_bytes, False)
-    let best_cost = block_list |> build_maze(n, grid) |> a_star(start, goal)
-    best_cost == large_num
-  })
-  |> result.unwrap(#(-1, "Not found"))
-  |> pair.second
+  |> bin_search(1024, list.length(block_list) - 1, 1024, grid, start, goal)
   |> io.println
 }
 
@@ -156,5 +148,32 @@ fn move(loc: Coord, dir: Dir) -> Coord {
     S -> Coord(loc.x, loc.y + 1)
     W -> Coord(loc.x - 1, loc.y)
     N -> Coord(loc.x, loc.y - 1)
+  }
+}
+
+fn bin_search(
+  block_list: List(String),
+  min: Int,
+  max: Int,
+  result: Int,
+  grid: Dict(Coord, String),
+  start: Coord,
+  goal: Coord,
+) -> String {
+  use <- bool.guard(
+    min >= max,
+    block_list
+      |> list.drop(result - 1)
+      |> list.first
+      |> result.unwrap("Not found"),
+  )
+
+  let assert Ok(mid) = int.floor_divide(min + max, 2)
+  let shortest_path =
+    block_list |> build_maze(mid + 1, grid) |> a_star(start, goal)
+
+  case shortest_path != large_num {
+    True -> bin_search(block_list, mid + 1, max, result, grid, start, goal)
+    False -> bin_search(block_list, min, mid - 1, mid + 1, grid, start, goal)
   }
 }
