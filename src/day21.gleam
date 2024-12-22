@@ -25,9 +25,10 @@ pub type Pad {
   DirPad
 }
 
+const large_num = 1_000_000_000_000_000_000_000
+
 pub fn main() {
-  // let assert Ok(content) = simplifile.read("data/day21_input.txt")
-  let assert Ok(content) = simplifile.read("data/day21_input_toy.txt")
+  let assert Ok(content) = simplifile.read("data/day21_input.txt")
 
   let seqs: List(List(String)) =
     content
@@ -35,6 +36,14 @@ pub fn main() {
     |> string.split("\n")
     |> list.map(fn(seq) { seq |> string.to_graphemes })
 
+  io.print("Part 1: ")
+  seqs |> solve(2) |> io.debug
+
+  io.print("Part 2: ")
+  seqs |> solve(25) |> io.debug
+}
+
+fn solve(seqs: List(List(String)), level: Int) -> Int {
   let loc2numpad: Dict(Coord, String) =
     [["7", "8", "9"], ["4", "5", "6"], ["1", "2", "3"], ["#", "0", "A"]]
     |> list.index_map(fn(line, y) {
@@ -58,10 +67,9 @@ pub fn main() {
   let start_numpad = Coord(2, 3)
   let start_dpad = Coord(2, 0)
 
-  io.print("Part 1: ")
   use cache <- memo.create()
+
   seqs
-  |> list.take(1)
   |> list.map(fn(num_seq) {
     press_pad(
       num_seq,
@@ -74,15 +82,14 @@ pub fn main() {
     |> list.map(fn(lseq) {
       lseq
       |> list.map(fn(s) {
-        min_len(s, 0, start_dpad, loc2dpad, dpad2loc, dpad_paths, cache)
+        min_len(s, level, start_dpad, loc2dpad, dpad2loc, dpad_paths, cache)
       })
-      |> list.fold(1_000_000_000, int.min)
+      |> list.fold(0, int.add)
     })
-    |> list.fold(0, int.add)
+    |> list.fold(large_num, int.min)
     |> complexity(num_seq, _)
   })
   |> list.fold(0, int.add)
-  |> io.debug
 }
 
 fn min_len(
@@ -99,17 +106,17 @@ fn min_len(
   use <- memo.memoize(cache, #(seq, level))
 
   press_pad(seq, start_dpad, loc2dpad, dpad2loc, DirPad, dpad_paths)
-  |> io.debug
   |> list.map(fn(dpad_seq) {
-    dpad_seq
-    |> list.map(fn(s) {
-      min_len(s, level - 1, start_dpad, loc2dpad, dpad2loc, dpad_paths, cache)
-    })
+    let lens =
+      dpad_seq
+      |> list.map(fn(s) {
+        min_len(s, level - 1, start_dpad, loc2dpad, dpad2loc, dpad_paths, cache)
+      })
+
+    lens
     |> list.fold(0, int.add)
-    // |> io.debug
   })
-  |> list.fold(100_000_000, int.min)
-  // |> list.fold(0, int.add)
+  |> list.fold(large_num, int.min)
 }
 
 fn press_pad(
@@ -140,6 +147,7 @@ fn press_pad(
         False ->
           [[[ap, [["A"]]] |> list.flatten |> list.flatten], np] |> list.flatten
       }
+      // |> io.debug
     })
   })
 }
