@@ -5,6 +5,7 @@ import gleam/io
 import gleam/list
 import gleam/set.{type Set}
 import gleam/string
+import rememo/memo
 import simplifile
 
 pub type Dir {
@@ -18,9 +19,14 @@ pub type Coord {
   Coord(x: Int, y: Int)
 }
 
+pub type Pad {
+  NumPad
+  DirPad
+}
+
 pub fn main() {
-  let assert Ok(content) = simplifile.read("data/day21_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day21_input_toy.txt")
+  // let assert Ok(content) = simplifile.read("data/day21_input.txt")
+  let assert Ok(content) = simplifile.read("data/day21_input_toy.txt")
 
   let seqs: List(List(String)) =
     content
@@ -50,12 +56,14 @@ pub fn main() {
   let start_dpad = Coord(2, 0)
 
   io.print("Part 1: ")
+  use cache <- memo.create()
   seqs
   |> list.map(fn(num_seq) {
     let min_seq_len =
-      press_pad(num_seq, start_numpad, loc2numpad, numpad2loc)
+      press_pad(num_seq, start_numpad, loc2numpad, numpad2loc, NumPad, cache)
       |> list.map(fn(seq) {
-        press_dpad_nested(seq, 2, start_dpad, loc2dpad, dpad2loc)
+        use cache <- memo.create()
+        press_dpad_nested(seq, 2, start_dpad, loc2dpad, dpad2loc, cache)
       })
       |> list.fold(100_000_000, int.min)
 
@@ -71,14 +79,23 @@ fn press_dpad_nested(
   start_dpad: Coord,
   loc2dpad: Dict(Coord, String),
   dpad2loc: Dict(String, Coord),
+  cache,
 ) -> Int {
   use <- bool.guard(seq == [], 0)
   use <- bool.guard(level == 0, list.length(seq))
-  let dpad_seqs = press_pad(seq, start_dpad, loc2dpad, dpad2loc)
+
+  let dpad_seqs = press_pad(seq, start_dpad, loc2dpad, dpad2loc, DirPad, cache)
 
   dpad_seqs
   |> list.map(fn(dpad_seq) {
-    press_dpad_nested(dpad_seq, level - 1, start_dpad, loc2dpad, dpad2loc)
+    press_dpad_nested(
+      dpad_seq,
+      level - 1,
+      start_dpad,
+      loc2dpad,
+      dpad2loc,
+      cache,
+    )
   })
   |> list.fold(100_000_000, int.min)
 }
@@ -88,17 +105,22 @@ fn press_pad(
   start: Coord,
   loc2pad: Dict(Coord, String),
   pad2loc: Dict(String, Coord),
+  pad: Pad,
+  cache,
 ) -> List(List(String)) {
   use <- bool.guard(seq == [], [[]])
 
   let assert [key, ..rest] = seq
   let assert Ok(goal) = pad2loc |> dict.get(key)
+
+  use <- memo.memoize(cache, #(start, goal, rest |> list.length))
+
   let dist = l1_dist(start, goal)
   let seqs =
     get_paths(loc2pad, start, goal, dist, [start], [], set.from_list([start]))
     |> list.map(path2dpad)
 
-  let new_press_seqs = press_pad(rest, goal, loc2pad, pad2loc)
+  let new_press_seqs = press_pad(rest, goal, loc2pad, pad2loc, pad, cache)
 
   seqs
   |> list.flat_map(fn(ap) {
