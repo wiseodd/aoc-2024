@@ -3,6 +3,7 @@ import gleam/dict.{type Dict}
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/result
 import gleam/set.{type Set}
 import gleam/string
 import rememo/memo
@@ -42,6 +43,7 @@ pub fn main() {
     |> list.flatten
     |> dict.from_list
   let numpad2loc: Dict(String, Coord) = loc2numpad |> invert_dict
+  let numpad_paths = cache_paths(loc2numpad)
 
   let loc2dpad: Dict(Coord, String) =
     [["#", "^", "A"], ["<", "v", ">"]]
@@ -51,6 +53,7 @@ pub fn main() {
     |> list.flatten
     |> dict.from_list
   let dpad2loc: Dict(String, Coord) = loc2dpad |> invert_dict
+  let dpad_paths = cache_paths(loc2dpad)
 
   let start_numpad = Coord(2, 3)
   let start_dpad = Coord(2, 0)
@@ -58,46 +61,55 @@ pub fn main() {
   io.print("Part 1: ")
   use cache <- memo.create()
   seqs
+  |> list.take(1)
   |> list.map(fn(num_seq) {
-    let min_seq_len =
-      press_pad(num_seq, start_numpad, loc2numpad, numpad2loc, NumPad, cache)
-      |> list.map(fn(seq) {
-        use cache <- memo.create()
-        press_dpad_nested(seq, 2, start_dpad, loc2dpad, dpad2loc, cache)
+    press_pad(
+      num_seq,
+      start_numpad,
+      loc2numpad,
+      numpad2loc,
+      NumPad,
+      numpad_paths,
+    )
+    |> list.map(fn(lseq) {
+      lseq
+      |> list.map(fn(s) {
+        min_len(s, 0, start_dpad, loc2dpad, dpad2loc, dpad_paths, cache)
       })
-      |> list.fold(100_000_000, int.min)
-
-    complexity(num_seq, min_seq_len)
+      |> list.fold(1_000_000_000, int.min)
+    })
+    |> list.fold(0, int.add)
+    |> complexity(num_seq, _)
   })
   |> list.fold(0, int.add)
   |> io.debug
 }
 
-fn press_dpad_nested(
+fn min_len(
   seq: List(String),
   level: Int,
   start_dpad: Coord,
   loc2dpad: Dict(Coord, String),
   dpad2loc: Dict(String, Coord),
+  dpad_paths: Dict(#(Coord, Coord), List(List(List(String)))),
   cache,
 ) -> Int {
-  use <- bool.guard(seq == [], 0)
   use <- bool.guard(level == 0, list.length(seq))
 
-  let dpad_seqs = press_pad(seq, start_dpad, loc2dpad, dpad2loc, DirPad, cache)
+  use <- memo.memoize(cache, #(seq, level))
 
-  dpad_seqs
+  press_pad(seq, start_dpad, loc2dpad, dpad2loc, DirPad, dpad_paths)
+  |> io.debug
   |> list.map(fn(dpad_seq) {
-    press_dpad_nested(
-      dpad_seq,
-      level - 1,
-      start_dpad,
-      loc2dpad,
-      dpad2loc,
-      cache,
-    )
+    dpad_seq
+    |> list.map(fn(s) {
+      min_len(s, level - 1, start_dpad, loc2dpad, dpad2loc, dpad_paths, cache)
+    })
+    |> list.fold(0, int.add)
+    // |> io.debug
   })
   |> list.fold(100_000_000, int.min)
+  // |> list.fold(0, int.add)
 }
 
 fn press_pad(
@@ -106,32 +118,51 @@ fn press_pad(
   loc2pad: Dict(Coord, String),
   pad2loc: Dict(String, Coord),
   pad: Pad,
-  cache,
-) -> List(List(String)) {
-  use <- bool.guard(seq == [], [[]])
+  all_paths: Dict(#(Coord, Coord), List(List(List(String)))),
+) -> List(List(List(String))) {
+  use <- bool.guard(seq == [], [[[]]])
 
   let assert [key, ..rest] = seq
   let assert Ok(goal) = pad2loc |> dict.get(key)
 
-  use <- memo.memoize(cache, #(start, goal, rest |> list.length))
-
-  let dist = l1_dist(start, goal)
-  let seqs =
-    get_paths(loc2pad, start, goal, dist, [start], [], set.from_list([start]))
-    |> list.map(path2dpad)
-
-  let new_press_seqs = press_pad(rest, goal, loc2pad, pad2loc, pad, cache)
+  let seqs: List(List(List(String))) =
+    all_paths |> dict.get(#(start, goal)) |> result.unwrap([[[]]])
+  let new_press_seqs: List(List(List(String))) =
+    press_pad(rest, goal, loc2pad, pad2loc, pad, all_paths)
 
   seqs
   |> list.flat_map(fn(ap) {
     new_press_seqs
     |> list.map(fn(np) {
       case rest == [] {
-        True -> [ap, np, ["A"]] |> list.flatten
-        False -> [ap, ["A"], np] |> list.flatten
+        True ->
+          [[[ap, [["A"]]] |> list.flatten |> list.flatten]] |> list.flatten
+        False ->
+          [[[ap, [["A"]]] |> list.flatten |> list.flatten], np] |> list.flatten
       }
     })
   })
+}
+
+fn cache_paths(
+  pad: Dict(Coord, String),
+) -> Dict(#(Coord, Coord), List(List(List(String)))) {
+  pad
+  |> dict.keys
+  |> list.combinations(2)
+  |> list.map(fn(p) {
+    let assert [p1, p2] = p
+    [p, [p2, p1]]
+  })
+  |> list.flatten
+  |> list.map(fn(p) {
+    let assert [s, e] = p
+    let paths =
+      get_paths(pad, s, e, l1_dist(s, e), [s], [], set.from_list([s]))
+      |> list.map(fn(llst) { llst |> list.map(path2dpad) })
+    #(#(s, e), paths)
+  })
+  |> dict.from_list
 }
 
 fn get_paths(
@@ -142,18 +173,18 @@ fn get_paths(
   path: List(Coord),
   paths: List(List(Coord)),
   visited: Set(Coord),
-) -> List(List(Coord)) {
+) -> List(List(List(Coord))) {
   // #(goal, path) |> io.debug
-  use <- bool.guard(start == goal, [path |> list.reverse, ..paths])
-  use <- bool.guard(list.length(path) > target_cost, paths)
+  use <- bool.guard(start == goal, [[path |> list.reverse, ..paths]])
+  use <- bool.guard(list.length(path) > target_cost, [paths])
 
   [E, S, W, N]
   |> list.map(fn(dir) {
     let next = move(start, dir)
-    use <- bool.guard(visited |> set.contains(next), paths)
-    use <- bool.guard(!dict.has_key(pad, next), paths)
+    use <- bool.guard(visited |> set.contains(next), [paths])
+    use <- bool.guard(!dict.has_key(pad, next), [paths])
     let assert Ok(key) = pad |> dict.get(next)
-    use <- bool.guard(key == "#", paths)
+    use <- bool.guard(key == "#", [paths])
     get_paths(
       pad,
       next,
@@ -165,6 +196,7 @@ fn get_paths(
     )
   })
   |> list.flatten
+  |> list.filter(fn(x) { !list.is_empty(x) })
 }
 
 fn l1_dist(loc: Coord, goal: Coord) -> Int {

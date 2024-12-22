@@ -12,8 +12,6 @@ import simplifile
 
 pub fn main() {
   let assert Ok(content) = simplifile.read("data/day22_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day22_input_toy.txt")
-  // let assert Ok(content) = simplifile.read("data/day22_input_toy2.txt")
 
   let secrets: List(Int) =
     content
