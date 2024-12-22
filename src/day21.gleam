@@ -3,12 +3,8 @@ import gleam/dict.{type Dict}
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{None, Some}
-import gleam/pair
 import gleam/set.{type Set}
 import gleam/string
-import gleamy/pairing_heap.{type Heap}
-import gleamy/priority_queue as pq
 import simplifile
 
 pub type Dir {
@@ -23,8 +19,8 @@ pub type Coord {
 }
 
 pub fn main() {
-  // let assert Ok(content) = simplifile.read("data/day21_input.txt")
-  let assert Ok(content) = simplifile.read("data/day21_input_toy.txt")
+  let assert Ok(content) = simplifile.read("data/day21_input.txt")
+  // let assert Ok(content) = simplifile.read("data/day21_input_toy.txt")
 
   let seqs: List(List(String)) =
     content
@@ -53,48 +49,38 @@ pub fn main() {
   let start_numpad = Coord(2, 3)
   let start_dpad = Coord(2, 0)
 
+  io.print("Part 1: ")
   seqs
-  |> list.take(1)
   |> list.map(fn(num_seq) {
-    let dpad_seqs = press_pad(num_seq, start_numpad, loc2numpad, numpad2loc)
-    dpad_seqs
-    |> list.map(fn(seq) {
-      let len = press_dpad_nested(seq, 1, 0, start_dpad, loc2dpad, dpad2loc)
-      // complexity(num_seq, seq)
-      len
-    })
+    let min_seq_len =
+      press_pad(num_seq, start_numpad, loc2numpad, numpad2loc)
+      |> list.map(fn(seq) {
+        press_dpad_nested(seq, 2, start_dpad, loc2dpad, dpad2loc)
+      })
+      |> list.fold(100_000_000, int.min)
+
+    complexity(num_seq, min_seq_len)
   })
-  // |> list.fold(0, int.add)
-  // |> io.debug
+  |> list.fold(0, int.add)
+  |> io.debug
 }
 
 fn press_dpad_nested(
   seq: List(String),
   level: Int,
-  total: Int,
   start_dpad: Coord,
   loc2dpad: Dict(Coord, String),
   dpad2loc: Dict(String, Coord),
 ) -> Int {
   use <- bool.guard(seq == [], 0)
-  let assert [start, ..rest] = seq
+  use <- bool.guard(level == 0, list.length(seq))
   let dpad_seqs = press_pad(seq, start_dpad, loc2dpad, dpad2loc)
-  use <- bool.lazy_guard(level == 0, fn() {
-    let assert Ok(len) =
-      dpad_seqs |> list.map(list.length) |> list.reduce(int.min)
-    press_dpad_nested(rest, level, total + len, start_dpad, loc2dpad, dpad2loc)
+
+  dpad_seqs
+  |> list.map(fn(dpad_seq) {
+    press_dpad_nested(dpad_seq, level - 1, start_dpad, loc2dpad, dpad2loc)
   })
-
-  let total =
-    total
-    + list.fold(dpad_seqs, 100_000_000, fn(acc, seq) {
-      int.min(
-        acc,
-        press_dpad_nested(seq, level - 1, total, start_dpad, loc2dpad, dpad2loc),
-      )
-    })
-
-  press_dpad_nested(rest, level, total, start_dpad, loc2dpad, dpad2loc)
+  |> list.fold(100_000_000, int.min)
 }
 
 fn press_pad(
@@ -187,12 +173,10 @@ fn path2dpad(path: List(Coord)) -> List(String) {
   }
 }
 
-fn complexity(code: List(String), press_seq: List(String)) -> Int {
-  let press_len = press_seq |> list.length
+fn complexity(code: List(String), min_seq_len: Int) -> Int {
   let assert Ok(code_num) =
     int.parse(code |> string.join("") |> string.slice(0, list.length(code) - 1))
-  [press_len, code_num] |> io.debug
-  press_len * code_num
+  min_seq_len * code_num
 }
 
 fn invert_dict(d: Dict(a, b)) -> Dict(b, a) {
