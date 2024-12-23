@@ -10,7 +10,6 @@ import simplifile
 
 pub fn main() {
   let assert Ok(content) = simplifile.read("data/day23_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day23_input_toy.txt")
 
   let graph: Dict(String, Set(String)) =
     content
@@ -23,14 +22,60 @@ pub fn main() {
     |> pair.first
 
   io.print("Part 1: ")
-  graph
-  |> get_cliques
+  let cliques =
+    graph
+    |> get_cliques(3)
+
+  cliques
   |> set.filter(fn(s) {
     s
     |> set.fold(False, fn(acc, str) { acc || string.starts_with(str, "t") })
   })
   |> set.size
   |> io.debug
+
+  io.print("Part 2: ")
+  graph
+  |> get_max_cliques
+  |> set.to_list
+  |> list.map(set.to_list)
+  |> list.fold([], fn(acc, clique) {
+    case list.length(clique) > list.length(acc) {
+      True -> clique
+      False -> acc
+    }
+  })
+  |> list.sort(string.compare)
+  |> string.join(",")
+  |> io.println
+}
+
+fn get_cliques(graph: Dict(String, Set(String)), k: Int) -> Set(Set(String)) {
+  graph
+  |> dict.keys
+  |> list.map(fn(n) { dfs(graph, n, k, set.new()) })
+  |> list.fold(set.new(), set.union)
+}
+
+fn get_max_cliques(graph: Dict(String, Set(String))) -> Set(Set(String)) {
+  let vertices = graph |> dict.keys |> set.from_list
+  vertices
+  |> set.map(fn(n) { max_clique(graph, vertices, set.from_list([n])) })
+}
+
+fn max_clique(
+  graph: Dict(String, Set(String)),
+  vertices: Set(String),
+  res: Set(String),
+) -> Set(String) {
+  case vertices |> set.to_list {
+    [] -> res
+    [v, ..rest] ->
+      case is_clique(graph, res |> set.insert(v)) {
+        True -> max_clique(graph, rest |> set.from_list, res |> set.insert(v))
+        False -> max_clique(graph, rest |> set.from_list, res)
+      }
+  }
 }
 
 fn is_clique(graph: Dict(String, Set(String)), subgraph: Set(String)) -> Bool {
@@ -42,29 +87,23 @@ fn is_clique(graph: Dict(String, Set(String)), subgraph: Set(String)) -> Bool {
   })
 }
 
-fn get_cliques(graph: Dict(String, Set(String))) -> Set(Set(String)) {
-  graph
-  |> dict.keys
-  |> list.map(fn(n) { dfs(graph, n, set.new()) })
-  |> list.fold(set.new(), set.union)
-}
-
 fn dfs(
   graph: Dict(String, Set(String)),
   start: String,
+  k: Int,
   subgraph: Set(String),
 ) -> Set(Set(String)) {
   use <- bool.guard(
-    set.size(subgraph) == 3 && is_clique(graph, subgraph),
+    set.size(subgraph) == k && is_clique(graph, subgraph),
     set.from_list([subgraph]),
   )
-  use <- bool.guard(set.size(subgraph) > 3, set.new())
+  use <- bool.guard(set.size(subgraph) > k, set.new())
 
   graph
   |> get(start)
   |> set.map(fn(n) {
     use <- bool.guard(subgraph |> set.contains(n), set.new())
-    dfs(graph, n, subgraph |> set.insert(start))
+    dfs(graph, n, k, subgraph |> set.insert(start))
   })
   |> set.fold(set.new(), set.union)
 }
