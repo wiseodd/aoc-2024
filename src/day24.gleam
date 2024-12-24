@@ -53,6 +53,53 @@ pub fn main() {
   |> int.base_parse(2)
   |> result.unwrap(-1)
   |> io.debug
+
+  io.print("Part 2: ")
+  eqs
+  |> dict.keys
+  |> list.filter(fn(wire) { is_faulty(wire, eqs) })
+  |> list.sort(string.compare)
+  |> string.join(",")
+  |> io.debug
+}
+
+fn is_faulty(wire: String, eqs: Dict(String, String)) -> Bool {
+  let assert [lhs, op, rhs] = eqs |> get(wire) |> string.split(" ")
+
+  use <- bool.guard(
+    string.starts_with(wire, "z") && wire != "z45" && op != "XOR",
+    True,
+  )
+
+  use <- bool.guard(
+    op == "XOR"
+      && !string.starts_with(wire, "z")
+      && !{ string.starts_with(lhs, "x") || string.starts_with(lhs, "y") }
+      && !{ string.starts_with(rhs, "x") || string.starts_with(rhs, "y") },
+    True,
+  )
+
+  let is_input_of_or =
+    0
+    < {
+      eqs
+      |> dict.filter(fn(_, v) {
+        let assert [lhs, op, rhs] = v |> string.split(" ")
+        op == "OR" && { lhs == wire || rhs == wire }
+      })
+      |> dict.size
+    }
+  use <- bool.guard(is_input_of_or && op != "AND", True)
+  use <- bool.guard(
+    !is_input_of_or
+      && op == "AND"
+      && !{
+      { lhs == "x00" && rhs == "y00" } || { lhs == "y00" && rhs == "x00" }
+    },
+    True,
+  )
+
+  False
 }
 
 fn compute(
