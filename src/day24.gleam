@@ -10,7 +10,6 @@ import simplifile
 
 pub fn main() {
   let assert Ok(content) = simplifile.read("data/day24_input.txt")
-  // let assert Ok(content) = simplifile.read("data/day24_input_toy.txt")
 
   let assert [init_str, op_str] = content |> string.trim |> string.split("\n\n")
 
